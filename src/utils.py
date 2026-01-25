@@ -1,10 +1,5 @@
 import pandas as pd
 import numpy as np
-import os
-try:
-    import yfinance as yf
-except Exception:
-    yf = None
 
 def load_and_combine_adj_close(tickers):
     """
@@ -20,41 +15,28 @@ def load_and_combine_adj_close(tickers):
         try:
             df = pd.read_csv(file_path, index_col='Date', parse_dates=True)
             df.columns = [col.lower() for col in df.columns]
+
+            # --- FIX: Intelligently find the correct price column ---
+            price_col_to_use = None
+            if 'adj close' in df.columns:
+                price_col_to_use = 'adj close'
+            elif 'close' in df.columns:
+                price_col_to_use = 'close'
+            
+            if price_col_to_use:
+                # A valid price column was found, use it
+                adj_close_df = df[[price_col_to_use]].rename(columns={price_col_to_use: ticker})
+                adj_close_list.append(adj_close_df)
+            else:
+                # If neither 'adj close' nor 'close' is found, print an error and skip.
+                print(f"Error: Neither 'Adj Close' nor 'Close' column found in {file_path}.")
+                print(f"Available columns are: {df.columns.tolist()}")
+                continue
+            
         except FileNotFoundError:
-            # Attempt to download missing raw file if yfinance is available
-            print(f"Raw data file for {ticker} not found at {file_path}. Trying to download via yfinance...")
-            if yf is None:
-                print("yfinance is not installed; please run the ingestion script or install yfinance.")
-                return pd.DataFrame()
-            # ensure data/raw exists
-            os.makedirs('data/raw', exist_ok=True)
-            try:
-                downloaded = yf.download(ticker, start='2015-01-01', end='2026-01-15', progress=False, threads=False)
-                if downloaded is None or downloaded.empty:
-                    print(f"yfinance returned no data for {ticker}.")
-                    return pd.DataFrame()
-                downloaded.to_csv(file_path)
-                df = downloaded
-                df.columns = [col.lower() for col in df.columns]
-                print(f"Downloaded and saved raw data for {ticker} to {file_path}")
-            except Exception as e:
-                print(f"Failed to download data for {ticker}: {e}")
-                return pd.DataFrame()
-
-        # --- FIX: Intelligently find the correct price column ---
-        price_col_to_use = None
-        if 'adj close' in df.columns:
-            price_col_to_use = 'adj close'
-        elif 'close' in df.columns:
-            price_col_to_use = 'close'
-
-        if price_col_to_use:
-            adj_close_df = df[[price_col_to_use]].rename(columns={price_col_to_use: ticker})
-            adj_close_list.append(adj_close_df)
-        else:
-            print(f"Error: Neither 'Adj Close' nor 'Close' column found in {file_path}.")
-            print(f"Available columns are: {df.columns.tolist()}")
-            continue
+            print(f"Error: Raw data file for {ticker} not found at {file_path}")
+            print("Please run the ingestion script first: python src/data_ingestion.py")
+            return pd.DataFrame()
     
     if not adj_close_list:
         print("Could not load any data. Please check the file paths and column names.")
@@ -66,6 +48,61 @@ def load_and_combine_adj_close(tickers):
     combined_df.dropna(inplace=True)
     
     return combined_df
+
+def create_full_processed_dataset(tickers, window=30):
+    """
+    Loads raw data for a list of tickers, calculates key features for each,
+    and combines them into a single, wide-format DataFrame.
+
+    Features calculated for each ticker:
+    - Daily Return
+    - Rolling Mean (based on Adj Close)
+    - Rolling Std Dev (Volatility, based on Adj Close)
+
+    Args:
+        tickers (list): A list of stock ticker symbols (e.g., ['TSLA', 'BND', 'SPY']).
+        window (int): The window size for rolling calculations.
+
+    Returns:
+        pandas.DataFrame: A single DataFrame containing all features for all tickers,
+                          with columns suffixed by the ticker name (e.g., 'Adj Close_TSLA').
+    """
+    processed_list = []
+    for ticker in tickers:
+        file_path = f'../data/raw/{ticker.lower()}_raw.csv'
+        try:
+            df = pd.read_csv(file_path, index_col='Date', parse_dates=True)
+            # Standardize column names for consistency
+            df.columns = [col.title().replace(' ', '_') for col in df.columns]
+
+        except FileNotFoundError:
+            print(f"Error: Raw data file for {ticker} not found at {file_path}")
+            return pd.DataFrame()
+
+        # --- Feature Engineering (as per Task 1) ---
+
+        # 1. Calculate Daily Percentage Change (Daily Return)
+        df['Daily_Return'] = df['Close'].pct_change()
+
+        # 2. Calculate Rolling Mean and Standard Deviation (Volatility)
+        df[f'Rolling_Mean_{window}D'] = df['Close'].rolling(window=window).mean()
+        df[f'Rolling_Std_{window}D'] = df['Close'].rolling(window=window).std()
+
+        # --- Add Suffix to all columns to identify the ticker ---
+        df = df.add_suffix(f'_{ticker}')
+        processed_list.append(df)
+
+    # Combine all individual processed dataframes into one
+    if not processed_list:
+        print("Could not process any data.")
+        return pd.DataFrame()
+
+    full_df = pd.concat(processed_list, axis=1)
+
+    # Drop initial rows with NaN values resulting from rolling calculations
+    full_df.dropna(inplace=True)
+
+    return full_df
 
 def calculate_daily_returns(prices_df):
     """Calculates the daily percentage change in prices."""
