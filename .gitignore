@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+models/
+
 # Virtual Environment
 venv/
 .venv/
@@ -27,10 +29,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Wheel / pip metadata
-pip-wheel-metadata/
-pip-selfcheck.json
-
 # IDE / Editor configuration
 .idea/
 .vscode/
@@ -46,39 +44,6 @@ Thumbs.db
 
 # Data files - uncomment if your CSVs are large
 # data/
-
-# Notebook and cache
-.ipynb_checkpoints
-.ipynb
-
-# Test, lint, and type caches
-.pytest_cache/
-.mypy_cache/
-.cache/
-
-# Coverage
-.coverage
-coverage.xml
-htmlcov/
-
-# Python packaging cache
-*.egg-info/
-dist/
-build/
-
-# Environments and local settings
-.env.local
-.env.*
-
-# Byte-compiled
-*.pyc
-*.pyo
-*.pyd
-
-# Misc
-*.sqlite3
-*.db
-*.log
 
 # Output files
 reports/
